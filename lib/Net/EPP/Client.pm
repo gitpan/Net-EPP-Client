@@ -2,7 +2,7 @@
 # free software; you can redistribute it and/or modify it under the same
 # terms as Perl itself.
 # 
-# $Id: Client.pm,v 1.1.1.1 2005/03/07 11:31:58 gavin Exp $
+# $Id: Client.pm,v 1.2 2005/03/07 17:17:07 gavin Exp $
 package Net::EPP::Client;
 use Carp;
 use IO::Socket;
@@ -305,6 +305,23 @@ sub send_frame {
 
 	$self->{'connection'}->print(pack('N', length($xml) + 4).$xml);
 
+	return 1;
+}
+
+=pod
+
+	$epp->disconnect;
+
+This closes the connection. An EPP server will always close a connection after
+a C<E<lt>logoutE<gt>> frame has been received and acknowledged; this method
+is provided to allow you to clean up on the client side, or close the
+connection out of sync with the server.
+
+=cut
+
+sub disconnect {
+	my $self = shift;
+	$self->{'connection'}->close;
 	return 1;
 }
 

@@ -1,0 +1,18 @@
+2005-03-10 12:44  gavin
+
+	* Makefile.PL: fixed prerequisites.
+
+2005-03-07 17:17  gavin
+
+	* lib/Net/EPP/Client.pm: added a disconnect() method.
+
+2005-03-07 11:31  gavin
+
+	* COPYING, META.yml, Makefile.PL, README, lib/Net/EPP/Client.pm,
+	  t/use.t: Initial import
+
+2005-03-07 11:31  gavin
+
+	* COPYING, META.yml, Makefile.PL, README, lib/Net/EPP/Client.pm,
+	  t/use.t: Initial revision
+
