@@ -1,8 +1,8 @@
-# Copyright (c) 2005 CentralNic Ltd. All rights reserved. This program is
+# Copyright (c) 2006 CentralNic Ltd. All rights reserved. This program is
 # free software; you can redistribute it and/or modify it under the same
 # terms as Perl itself.
 # 
-# $Id: Client.pm,v 1.2 2005/03/07 17:17:07 gavin Exp $
+# $Id: Client.pm,v 1.5 2006/01/04 12:35:55 gavin Exp $
 package Net::EPP::Client;
 use Carp;
 use IO::Socket;
@@ -10,9 +10,10 @@ use IO::Socket::SSL;
 use XML::Parser;
 use vars qw($VERSION $XMLDOM $TMPDIR);
 use File::Temp qw(tempdir tempfile);
+use UNIVERSAL qw(isa);
 use strict;
 
-our $VERSION = '0.01';
+our $VERSION = '0.03';
 
 =pod
 
@@ -27,7 +28,7 @@ Net::EPP::Client - a client library for the TCP transport for EPP, the Extensibl
 	use strict;
 
 	my $epp = Net::EPP::Client->new(
-		host	=> 'epp.registry.tld',
+		host	=> 'epp.nic.tld',
 		port	=> 700,
 		ssl	=> 1,
 		dom	=> 1,
@@ -139,6 +140,8 @@ sub new {
 
 =head1 METHODS
 
+=head2 Connecting to a server:
+
 	my $greeting = $epp->connect(%PARAMS);
 
 This method establishes the TCP connection. You can use the C<%PARAMS> hash to
@@ -172,7 +175,7 @@ sub connect {
 		croak("Connection to $self->{'host'}:$self->{'port'} failed: \"$@\"");
 
 	} else {
-		return $self->get_frame();
+		return $self->get_frame;
 
 	}
 
@@ -180,7 +183,9 @@ sub connect {
 
 =pod
 
-	my $frame = $epp->get_frame();
+=head2 Getting a frame from the server:
+
+	my $frame = $epp->get_frame;
 
 This method returns an EPP response frame from the server. This may either be a
 scalar filled with XML, or an C<XML::DOM::Document> object, depending on
@@ -246,7 +251,9 @@ sub get_return_value {
 
 =pod
 
-	$epp->send_frame($frame);
+=head2 Sending a frame to the server:
+
+	$epp->send_frame($frame, $wfcheck);
 
 This sends a request frame to the server. C<$frame> may be one of:
 
@@ -256,20 +263,20 @@ This sends a request frame to the server. C<$frame> may be one of:
 
 =item * a scalar containing a filename
 
-=item * an C<XML::DOM::Document> object
+=item * an C<XML::DOM::Document> object (or an instance of a subclass)
 
 =back
 
-In the case of the first two, the XML will be checked for well-formedness
-before being sent. If the XML isn't well formed, this method will C<croak()>.
+Unless $wfheck is false, the first two of these will be checked for
+well-formedness.
 
 =cut
 
 sub send_frame {
-	my ($self, $frame) = @_;
+	my ($self, $frame, $wfcheck) = @_;
 
 	my ($xml, $wfcheck);
-	if (ref($frame) eq 'XML::DOM::Document') {
+	if (ref($frame) ne '' && $frame->isa('XML::DOM::Document')) {
 		$xml		= $frame->toString;
 		$wfcheck	= 0;
 
@@ -286,7 +293,7 @@ sub send_frame {
 
 	} else {
 		$xml		= $frame;
-		$wfcheck	= 1;
+		$wfcheck	= ($wfcheck ? 1 : 0);
 
 	}
 
@@ -310,6 +317,8 @@ sub send_frame {
 
 =pod
 
+=head2 Disconnecting from the server:
+
 	$epp->disconnect;
 
 This closes the connection. An EPP server will always close a connection after
@@ -327,18 +336,14 @@ sub disconnect {
 
 =pod
 
+=head1 AUTHOR
+
+Gavin Brown (L<epp@centralnic.com>) for CentralNic Ltd (http://www.centralnic.com/).
+
 =head1 COPYRIGHT
 
-This module is (c) 2005, CentralNic Ltd. This module is free software; you can
+This module is (c) 2006 CentralNic Ltd. This module is free software; you can
 redistribute it and/or modify it under the same terms as Perl itself.
-
-=head1 TO DO
-
-=over
-
-=item * implement some command-specific stuff, so you can simply use methods like C<login()>, C<check()>, etc
-
-=back
 
 =head1 SEE ALSO
 
@@ -346,7 +351,7 @@ redistribute it and/or modify it under the same terms as Perl itself.
 
 =item * RFCs 3730 and RFC 3734, available from L<http://www.ietf.org/>.
 
-=item * The CentralNic EPP site at L<http://www.centralnic.com/epp/>.
+=item * The CentralNic EPP site at L<http://www.centralnic.com/resellers/epp>.
 
 =back
 
