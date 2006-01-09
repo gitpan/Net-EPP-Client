@@ -2,18 +2,17 @@
 # free software; you can redistribute it and/or modify it under the same
 # terms as Perl itself.
 # 
-# $Id: Client.pm,v 1.5 2006/01/04 12:35:55 gavin Exp $
+# $Id: Client.pm,v 1.7 2006/01/09 13:32:43 gavin Exp $
 package Net::EPP::Client;
 use Carp;
 use IO::Socket;
 use IO::Socket::SSL;
 use XML::Parser;
 use vars qw($VERSION $XMLDOM $TMPDIR);
-use File::Temp qw(tempdir tempfile);
 use UNIVERSAL qw(isa);
 use strict;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 =pod
 
@@ -59,18 +58,16 @@ implements a client for that model. You can establish and manage EPP
 connections and send and receive responses over this connection.
 
 C<Net::EPP::Client> also provides some time-saving features, such as being able
-to provide request and response frames as C<XML::DOM::Document> objects.
+to provide request and response frames as C<XML::LibXML::Document> objects.
 
 =cut
 
 BEGIN {
 	our $XMLDOM = 0;
 	eval {
-		use XML::DOM;
+		use XML::LibXML;
 		$XMLDOM = 1;
 	};
-
-	our $TMPDIR = tempdir(CLEANUP => 1);
 }
 
 =pod
@@ -123,10 +120,10 @@ sub new {
 
 	if ($self->{'dom'} == 1) {
 		if ($XMLDOM == 0) {
-			croak("DOM requested but XML::DOM isn't available");
+			croak("DOM requested but XML::LibXML isn't available");
 
 		} else {
-			$self->{'dom_parser'} = XML::DOM::Parser->new;
+			$self->{'dom_parser'} = XML::LibXML->new;
 
 		}
 	}
@@ -183,6 +180,23 @@ sub connect {
 
 =pod
 
+=head2 Communicating with the server:
+
+	my $answer = $epp->request($question);
+
+This is a simple wrapper around C<get_frame()> and C<send_frame()> (see below).
+This method accepts a "question" frame as an argument, sends it to the server,
+and then returns the next frame the server sends back.
+
+=cut
+
+sub request {
+	my ($self, $frame) = @_;
+	return $self->get_frame if ($self->send_frame($frame));
+}
+
+=pod
+
 =head2 Getting a frame from the server:
 
 	my $frame = $epp->get_frame;
@@ -232,11 +246,7 @@ sub get_return_value {
 	} else {
 		my $document;
 		eval {
-			my ($fh, $fname) = tempfile(DIR => $TMPDIR);
-			$fh->print($xml);
-			$fh->close;
-			$document = $self->{'dom_parser'}->parsefile($fname);
-			unlink($fname);
+			$document = $self->{'dom_parser'}->parse_string($xml);
 		};
 		if (!defined($document) || $@ ne '') {
 			chomp($@);
@@ -276,7 +286,7 @@ sub send_frame {
 	my ($self, $frame, $wfcheck) = @_;
 
 	my ($xml, $wfcheck);
-	if (ref($frame) ne '' && $frame->isa('XML::DOM::Document')) {
+	if (ref($frame) ne '' && ($frame->isa('XML::DOM::Document') || $frame->isa('XML::LibXML::Document'))) {
 		$xml		= $frame->toString;
 		$wfcheck	= 0;
 
