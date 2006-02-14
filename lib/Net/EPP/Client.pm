@@ -2,17 +2,17 @@
 # free software; you can redistribute it and/or modify it under the same
 # terms as Perl itself.
 # 
-# $Id: Client.pm,v 1.7 2006/01/09 13:32:43 gavin Exp $
+# $Id: Client.pm,v 1.9 2006/02/14 14:30:01 gavin Exp $
 package Net::EPP::Client;
+use bytes;
 use Carp;
 use IO::Socket;
 use IO::Socket::SSL;
-use XML::Parser;
-use vars qw($VERSION $XMLDOM $TMPDIR);
+use vars qw($VERSION $XMLDOM $EPPFRAME);
 use UNIVERSAL qw(isa);
 use strict;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 =pod
 
@@ -30,7 +30,7 @@ Net::EPP::Client - a client library for the TCP transport for EPP, the Extensibl
 		host	=> 'epp.nic.tld',
 		port	=> 700,
 		ssl	=> 1,
-		dom	=> 1,
+		frames	=> 1,
 	);
 
 	my $greeting = $epp->connect;
@@ -58,15 +58,20 @@ implements a client for that model. You can establish and manage EPP
 connections and send and receive responses over this connection.
 
 C<Net::EPP::Client> also provides some time-saving features, such as being able
-to provide request and response frames as C<XML::LibXML::Document> objects.
+to provide request and response frames as C<Net::EPP::Frame> objects.
 
 =cut
 
 BEGIN {
-	our $XMLDOM = 0;
+	our $XMLDOM   = 0;
+	our $EPPFRAME = 0;
 	eval {
 		use XML::LibXML;
 		$XMLDOM = 1;
+	};
+	eval {
+		use Net::EPP::Frame;
+		$EPPFRAME = 1;
 	};
 }
 
@@ -96,10 +101,16 @@ If the C<ssl> parameter is defined, then C<IO::Socket::SSL> will be used to
 provide an encrypted connection. If not, then a plaintext connection will be
 created.
 
-=item * dom
+=item * dom (deprecated)
 
 If the C<dom> parameter is defined, then all response frames will be returned
-as C<XML::DOM::Document> objects.
+as C<XML::LibXML::Document> objects.
+
+=item * frames
+
+If the C<frames> parameter is defined, then all response frames will be
+returned as C<Net::EPP::Frame> objects (actually, C<XML::LibXML::Document>
+objects reblessed as C<Net::EPP::Frame> objects).
 
 =back
 
@@ -112,23 +123,38 @@ sub new {
 	croak("missing port")		if (!defined($params{'port'}));
 
 	my $self = {
-		'host'	=> $params{'host'},
-		'port'	=> $params{'port'},
-		'ssl'	=> (defined($params{'ssl'}) ? 1 : 0),
-		'dom'	=> (defined($params{'dom'}) ? 1 : 0),
+		'host'		=> $params{'host'},
+		'port'		=> $params{'port'},
+		'ssl'		=> (defined($params{'ssl'}) ? 1 : 0),
+		'dom'		=> (defined($params{'dom'}) ? 1 : 0),
+		'frames'	=> (defined($params{'frames'}) ? 1 : 0),
 	};
 
-	if ($self->{'dom'} == 1) {
+	if ($self->{'frames'} == 1) {
+		if ($EPPFRAME == 0) {
+			croak("Frames requested but Net::EPP::Frame isn't available");
+
+		} else {
+			$self->{'parser'} = XML::LibXML->new;
+			$self->{'class'} = 'Net::EPP::Frame';
+
+		}
+
+	} elsif ($self->{'dom'} == 1) {
 		if ($XMLDOM == 0) {
 			croak("DOM requested but XML::LibXML isn't available");
 
 		} else {
-			$self->{'dom_parser'} = XML::LibXML->new;
+			$self->{'parser'} = XML::LibXML->new;
+			$self->{'class'} = 'XML::LibXML::Document';
 
 		}
-	}
 
-	$self->{'xml_parser'} = XML::Parser->new;
+	} else {
+		# for well-formedness checking:
+		$self->{'parser'} = XML::LibXML->new;
+
+	}
 
 	return bless($self, $package);
 }
@@ -202,8 +228,9 @@ sub request {
 	my $frame = $epp->get_frame;
 
 This method returns an EPP response frame from the server. This may either be a
-scalar filled with XML, or an C<XML::DOM::Document> object, depending on
-whether you defined the C<dom> parameter to the constructor.
+scalar filled with XML, an C<XML::LibXML::Document> object (or an
+C<XML::DOM::Document> object), depending on whether you defined the C<dom>
+parameter to the constructor.
 
 B<Important Note>: this method will block your program until it receives the
 full frame from the server. That could be a bad thing for your program, so you
@@ -240,20 +267,21 @@ sub get_frame {
 sub get_return_value {
 	my ($self, $xml) = @_;
 
-	if ($self->{'dom'} != 1) {
+	if (!defined($self->{'class'})) {
 		return $xml;
 
 	} else {
 		my $document;
 		eval {
-			$document = $self->{'dom_parser'}->parse_string($xml);
+			$document = $self->{'parser'}->parse_string($xml);
 		};
 		if (!defined($document) || $@ ne '') {
 			chomp($@);
 			croak("Frame from server wasn't well formed: \"$@\"\n\nThe XML looks like this:\n\n$xml\n\n");
 
 		} else {
-			return $document;
+			my $class = $self->{'class'};
+			return bless($document, $class);
 
 		}
 	}
@@ -273,19 +301,21 @@ This sends a request frame to the server. C<$frame> may be one of:
 
 =item * a scalar containing a filename
 
+=item * an C<XML::LibXML::Document> object (or an instance of a subclass)
+
 =item * an C<XML::DOM::Document> object (or an instance of a subclass)
 
 =back
 
-Unless $wfheck is false, the first two of these will be checked for
-well-formedness.
+Unless C<$wfcheck> is false, the first two of these will be checked for
+well-formedness. If the XML data is broken, then this method will croak.
 
 =cut
 
 sub send_frame {
 	my ($self, $frame, $wfcheck) = @_;
 
-	my ($xml, $wfcheck);
+	my $xml;
 	if (ref($frame) ne '' && ($frame->isa('XML::DOM::Document') || $frame->isa('XML::LibXML::Document'))) {
 		$xml		= $frame->toString;
 		$wfcheck	= 0;
@@ -309,7 +339,7 @@ sub send_frame {
 
 	if ($wfcheck == 1) {
 		eval {
-			$self->{'xml_parser'}->parse($xml);
+			$self->{'parser'}->parse_string($xml);
 		};
 
 		if ($@ ne '') {
@@ -348,7 +378,7 @@ sub disconnect {
 
 =head1 AUTHOR
 
-Gavin Brown (L<epp@centralnic.com>) for CentralNic Ltd (http://www.centralnic.com/).
+Gavin Brown (L<epp@centralnic.com>) for CentralNic Ltd (L<http://www.centralnic.com/>).
 
 =head1 COPYRIGHT
 
@@ -358,6 +388,10 @@ redistribute it and/or modify it under the same terms as Perl itself.
 =head1 SEE ALSO
 
 =over
+
+=item * L<Net::EPP::Frame>
+
+=item * L<Net::EPP::Proxy>
 
 =item * RFCs 3730 and RFC 3734, available from L<http://www.ietf.org/>.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: Makefile.PL,v 1.4 2006/01/09 13:32:43 gavin Exp $
+# $Id: Makefile.PL,v 1.5 2006/02/14 14:30:01 gavin Exp $
 
 use ExtUtils::MakeMaker;
 
@@ -9,6 +9,6 @@ WriteMakefile(
     'PREREQ_PM'			=> {
         'IO::Socket'		=> 0,
         'IO::Socket::SSL'	=> 0,
-        'XML::Parser'		=> 0,
+        'XML::LibXML'		=> 0,
     },
 );
