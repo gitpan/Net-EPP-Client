@@ -2,7 +2,7 @@
 # free software; you can redistribute it and/or modify it under the same
 # terms as Perl itself.
 # 
-# $Id: Client.pm,v 1.9 2006/02/14 14:30:01 gavin Exp $
+# $Id: Client.pm,v 1.12 2006/07/24 12:20:19 gavin Exp $
 package Net::EPP::Client;
 use bytes;
 use Carp;
@@ -12,7 +12,7 @@ use vars qw($VERSION $XMLDOM $EPPFRAME);
 use UNIVERSAL qw(isa);
 use strict;
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 =pod
 
@@ -247,8 +247,12 @@ so:
 	};
 
 	if ($@ ne '') {
+		alarm(0);
 		print "timed out\n";
 	}
+
+If the connection to the server closes before the response can be received, or
+the server returned a mal-formed frame, this method will C<croak()>.
 
 =cut
 
@@ -257,11 +261,17 @@ sub get_frame {
 
 	my $hdr;
 	$self->{'connection'}->read($hdr, 4);
+	my $length = (unpack('N', $hdr) - 4);
+	if ($length < 1) {
+		croak("Got a bad frame length from server - connection closed?");
 
-	my $answer;
-	$self->{'connection'}->read($answer, (unpack('N', $hdr) - 4));
+	} else {
+		my $answer;
+		$self->{'connection'}->read($answer, $length);
 
-	return $self->get_return_value($answer);
+		return $self->get_return_value($answer);
+
+	}
 };
 
 sub get_return_value {
