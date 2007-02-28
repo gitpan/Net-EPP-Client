@@ -2,7 +2,7 @@
 # free software; you can redistribute it and/or modify it under the same
 # terms as Perl itself.
 # 
-# $Id: Client.pm,v 1.12 2006/07/24 12:20:19 gavin Exp $
+# $Id: Client.pm,v 1.13 2007/02/28 10:47:12 gavin Exp $
 package Net::EPP::Client;
 use bytes;
 use Carp;
@@ -12,7 +12,7 @@ use vars qw($VERSION $XMLDOM $EPPFRAME);
 use UNIVERSAL qw(isa);
 use strict;
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 =pod
 
@@ -267,7 +267,12 @@ sub get_frame {
 
 	} else {
 		my $answer;
-		$self->{'connection'}->read($answer, $length);
+		while (length($answer) < $length) {
+			my $octet;
+			$self->{'connection'}->read($octet, ($length - length($answer)));
+			last if (length($octet) == 0); # in case the socket has closed
+			$answer .= $octet;
+		}
 
 		return $self->get_return_value($answer);
 
